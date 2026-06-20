@@ -6,6 +6,7 @@ export default defineConfig({
   publicDir: 'static',
   server: {
     port: 5173,
+    host: true,
     proxy: {
       '/api': 'http://localhost:3000',
       '/socket.io': {
