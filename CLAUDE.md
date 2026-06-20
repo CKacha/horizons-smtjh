@@ -8,19 +8,20 @@ A multiplayer browser game (Among Us-style) built with a Svelte frontend and an 
 
 ## Commands
 
-Run from the repo root (uses npm workspaces):
+To start localhost, run both of these from the **repo root**:
 
 ```bash
-npm run dev:frontend      # Start Vite dev server (http://localhost:5173)
-npm run dev:backend       # Start backend with nodemon (http://localhost:3000)
-npm run start:backend     # Start backend without hot-reload
+npm install     # install all workspace dependencies (run once, or after adding packages)
+npm run dev     # starts backend (port 3000) and frontend (port 5173+) concurrently
 ```
 
-Or run directly from each subdirectory:
+That's it — `concurrently` handles both processes in one terminal.
+
+If you need to run them separately:
 
 ```bash
-cd backend && npm install && npm run dev
-cd frontend && npm install && npm run dev
+npm run dev:backend       # backend only (nodemon, port 3000)
+npm run dev:frontend      # frontend only (Vite, port 5173)
 ```
 
 Build the frontend for production:
@@ -37,11 +38,13 @@ horizons-smtjh/
 │   └── server.js   Single-file server; REST health check + Socket.IO connection handling
 └── frontend/       Svelte 4 + Vite app (ESM)
     └── src/
-        ├── App.svelte           Root component — mounts GameCanvas
-        └── lib/GameCanvas.svelte  Full-screen canvas game loop with requestAnimationFrame
+        ├── App.svelte              Root component — mounts GameCanvas
+        ├── socket.js               Singleton socket.io-client instance
+        ├── gameStore.js            Svelte writable stores: localPlayer, players (Map)
+        └── lib/GameCanvas.svelte   Full-screen canvas game loop, camera, input, rendering
 ```
 
-**Communication**: The frontend connects to the backend via Socket.IO (`socket.io-client`). CORS is locked to `http://localhost:5173` in development — update `backend/server.js` when deploying.
+**Communication**: The frontend connects to the backend via Socket.IO (`socket.io-client`). CORS allows any `localhost` port in development (regex `^http://localhost:\d+$`), so Vite picking 5173 or 5174 both work fine.
 
 **Frontend rendering**: `GameCanvas.svelte` owns the entire canvas game loop. It draws directly to a `<canvas>` element via the 2D context, not via Svelte's DOM reactivity. New game entities should be drawn inside the `draw()` function and driven by the frame counter `t`.
 
