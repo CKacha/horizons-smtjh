@@ -3,10 +3,6 @@ horizons thingy
 
 # locahosting guide
 
-cd backend
+in root:
 npm install
-node server.js
-
-cd frontend
-npm install
-npx vite
+npm run dev
