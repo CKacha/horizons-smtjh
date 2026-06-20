@@ -1,1 +1,4 @@
-.emv
+.env
+node_modules/
+dist/
+.svelte-kit/
