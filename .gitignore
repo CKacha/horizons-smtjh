@@ -1,5 +1,46 @@
-.env
+# dependencies
 node_modules/
+
+# build output
 dist/
 .svelte-kit/
-backend/game.db
+
+# env / secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# database
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# logs
+*.log
+npm-debug.log*
+lerna-debug.log*
+
+# editor / OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.clip
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# test / coverage
+coverage/
+.nyc_output/
+
+# npm pack
+*.tgz

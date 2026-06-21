@@ -2,6 +2,9 @@
   "name": "horizons-backend",
   "version": "0.1.0",
   "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
@@ -15,9 +18,5 @@
   },
   "devDependencies": {
     "nodemon": "^3.0.0"
-  },
-  "concurrency": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
   }
 }
