@@ -15,7 +15,7 @@ const io = new Server(server, { cors: { origin: anyOrigin, methods: ['GET', 'POS
 app.use(cors({ origin: anyOrigin }));
 app.use(express.json());
 
-app.get('/api/health',     (_req, res) => res.json({ status: 'ok' }));
+app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 app.get('/api/leaderboard', (_req, res) => res.json(getLeaderboard.all()));
 
 const WORLD_W = 3000;
@@ -27,7 +27,7 @@ const MAX_PLAYERS = 10;
 const COLORS = ['#e94560', '#4ea8de', '#50c878', '#f5a623', '#c678dd', '#7ed6df', '#ff9f43', '#a8ff78'];
 
 const players = new Map();
-const roles   = new Map();
+const roles = new Map();
 let phase = 'lobby';
 
 // Image-based collision map (loaded from map.png at startup)
@@ -117,7 +117,27 @@ io.on('connection', (socket) => {
     io.emit('phase_change', 'playing');
     console.log('game started — roles:', Object.fromEntries(roles));
   });
-
+  socket.on('chat', ({ message, channel }) => {
+    const sender = players.get(socket.id);
+    if (!sender) return;
+    const text = (message || '').toString().trim().slice(0, 200);
+    if (!text) return;
+    const payload = {
+      senderId: sender.id,
+      name: sender.name,
+      color: sender.color,
+      message: text,
+      channel,
+      timestamp: Date.now(),
+    };
+    if (channel === 'alien') {
+      players.forEach((_, sid) => {
+        if (roles.get(sid) === 'alien') io.to(sid).emit('chat_message', payload);
+      });
+    } else {
+      io.emit('chat_message', payload);
+    }
+  });
   socket.on('disconnect', () => {
     console.log('disconnected:', socket.id);
     players.delete(socket.id);
@@ -135,7 +155,7 @@ setInterval(() => {
   players.forEach((p) => {
     if (!p.alive) return;
     const dx = (p.input.right ? SPEED : 0) - (p.input.left ? SPEED : 0);
-    const dy = (p.input.down  ? SPEED : 0) - (p.input.up   ? SPEED : 0);
+    const dy = (p.input.down ? SPEED : 0) - (p.input.up ? SPEED : 0);
     if (dx !== 0 && isWalkable(p.x + dx, p.y)) p.x += dx;
     if (dy !== 0 && isWalkable(p.x, p.y + dy)) p.y += dy;
   });
