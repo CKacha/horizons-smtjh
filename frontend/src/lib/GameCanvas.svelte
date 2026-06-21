@@ -52,11 +52,13 @@
   }
 
   function onKeyDown(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     const k = keyMap(e.key);
     if (k && !keys[k]) { keys[k] = true; socket.emit('input', { ...keys }); }
   }
 
   function onKeyUp(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     const k = keyMap(e.key);
     if (k) { keys[k] = false; socket.emit('input', { ...keys }); }
   }
