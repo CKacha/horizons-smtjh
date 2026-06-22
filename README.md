@@ -4,10 +4,10 @@ A multiplayer browser game in the style of Among Us — **Residents vs Aliens** 
 
 ## Requirements
 
-- **Node.js 18+** (required by `sharp` and `better-sqlite3`)
+- **Node.js 18+** (required by `better-sqlite3`)
 - npm 9+ (comes with Node 18)
 
-`sharp` uses native binaries distributed as prebuilds — no compiler needed on Windows, macOS, or common Linux distros. If you're on an unusual platform and `npm install` fails for sharp, see [sharp's installation docs](https://sharp.pixelplumbing.com/install).
+`better-sqlite3` ships prebuilt native binaries — no compiler needed on Windows, macOS, or common Linux distros.
 
 ## Setup
 
@@ -111,7 +111,7 @@ FIRE: Reactor Core  620,  460 * │ FIRE: Control Room  2200, 670
 
 `*` Reactor Core fire blocks uranium extraction
 
-Black/dark-gray pixels on the map images act as walls (collision grid built at server startup via `sharp`).
+The map is open — players move freely and are only kept inside the world bounds.
 
 ---
 
@@ -122,6 +122,5 @@ Black/dark-gray pixels on the map images act as walls (collision grid built at s
 | Frontend | Svelte 4 + Vite, full-screen `<canvas>` (no DOM entities) |
 | Backend | Express + Socket.IO (CommonJS, Node.js) |
 | Persistence | SQLite via `better-sqlite3` — player names, colors, kills, deaths, games |
-| Image processing | `sharp` — resizes 20000×20000 PNGs to collision grids at startup |
-| Audio | Web Audio API — procedural siren generated in-browser, no audio files needed |
+| Audio | Web Audio API procedural fallback + sampled clips from Google's free sound library |
 | Transport | Socket.IO WebSocket; Vite dev proxy forwards `/socket.io` and `/api` to port 3000 |

@@ -32,6 +32,7 @@ horizons-smtjh/
         ├── App.svelte              Root — mounts GameCanvas only
         ├── socket.js               Singleton socket.io-client
         ├── gameStore.js            Svelte stores: localPlayer, players, phase, myRole
+        ├── sfx.js                  Procedural Web Audio sound effects (no audio files)
         └── lib/GameCanvas.svelte   Full-screen canvas game loop — owns all rendering and input
 ```
 
@@ -124,9 +125,11 @@ Served at `/` in dev (Vite `publicDir: 'static'`) and production.
 - **Canvas only**: `GameCanvas.svelte` draws everything via `ctx` inside `draw()` (rAF loop). No Svelte DOM reactivity for game entities.
 - **Movement**: Server-authoritative, 50 ms tick. Client lerps positions at factor 0.18/frame for smoothness.
 - **World dimensions**: `WORLD_W = 3000`, `WORLD_H = 1500`. Must match in both `server.js` and `GameCanvas.svelte`.
-- **Pixel collision**: `sharp` resizes each map PNG to 1500×1500 at startup, builds a `Uint8Array` (0=wall, 1=walkable). Brightness < 80 = wall. Checks 2 leading-edge points per axis at player radius 14 px. Fallback: bounds-only while loading.
+- **Movement**: Open map — no pixel-collision walls. `isWalkable` only keeps players inside the world bounds (player radius 14 px). `canMoveX`/`canMoveY` clamp to the edges.
 - **Dead bodies**: `player_killed` includes `x, y` (exact server position). Client stores `deadBodies[]` and draws rotated sprite + blood pool ellipse. Cleared on lobby reset.
 - **Siren**: Web Audio API — no audio file. `startSiren()` / `stopSiren()` controlled by `fire_update`. Also stopped on game over, lobby reset, `onDestroy`.
+- **Sound effects** (`src/sfx.js`): Two layers. (1) Sampled clips streamed from Google's free sound library (`actions.google.com/sounds/v1/`, no API key, no CORS needed for `HTMLAudioElement` playback), preloaded on `unlockAudio()` and cloned per play so overlaps don't cut each other. (2) Procedural Web Audio fallback — `tone()` (enveloped oscillator) + `noise()` (filtered white-noise burst) — used whenever a clip hasn't loaded or the network is unavailable. Each `sfx.<name>()` tries the sample first, else the synth. Effects: `click`, `taskStart`, `taskComplete`, `blocked`, `kill`, `death`, `sabotage`, `extinguish` (procedural-only), `nukeSuccess`, `nukeFail`, `victory`, `defeat`. Wired into socket events (`task_completed`, `task_blocked`, `player_killed`, `nuke_result`, `game_over`) and local actions (`handleInteract`). `unlockAudio()` must be called on a user gesture (keydown, join/start click) to satisfy browser autoplay policy.
+- **UUID fallback**: `crypto.randomUUID()` only exists in a secure context (HTTPS/localhost). Over a LAN IP on plain HTTP (e.g. port-forwarded play) it's undefined, so `GameCanvas` uses a local `uuid()` helper that falls back to a `Math.random()` v4 generator.
 - **Uranium block**: Server rejects `task_start` for `'uranium'` if `fires['fire_1'].active`, emits `task_blocked`. Server tick also auto-cancels in-progress uranium task when fire_1 starts. Client shows fire glow on uranium zone + "BLOCKED" label.
 - **Player keying**: `socket.id` = server Map key; player objects carry UUID `id`. `player_left` emits UUID.
 - **Fog of war**: Offscreen `lightCanvas`, radial gradient composite, drawn after all entities.

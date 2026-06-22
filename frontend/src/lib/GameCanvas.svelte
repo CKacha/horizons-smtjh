@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import socket from '../socket.js';
   import { localPlayer, players as playersStore } from '../gameStore.js';
+  import { sfx, unlockAudio } from '../sfx.js';
 
   // ── Constants ──────────────────────────────────────────────────────────
   const WORLD_W = 1500, WORLD_H = 1500;
@@ -115,6 +116,10 @@
   const keys = {};
   let prevSent = {};
 
+  // ── Touch controls (mobile) ────────────────────────────────────────────
+  let isTouch = false;
+  let touchMove = { up: false, down: false, left: false, right: false };
+
   // ── Frame ──────────────────────────────────────────────────────────────
   let t = 0;
   let animId = null;
@@ -162,6 +167,7 @@
     deadBodies = []; taskProgress = { taskId: null, progress: 0 };
     taskZones = []; sabotageZones = []; nukeZone = null;
     myTasks = null; allRoles = {}; fires = {};
+    touchMove = { up: false, down: false, left: false, right: false };
     introImgKey = null; killFlashKey = null; blockedMsg = null;
     nukeMsg = null; gameOverMsg = null;
     stopSiren();
@@ -248,11 +254,13 @@
       if (!myTasks.completed.includes(taskId)) myTasks.completed = [...myTasks.completed, taskId];
       myTasks.inProgress = null;
       taskProgress = { taskId: null, progress: 0 };
+      sfx.taskComplete();
     });
 
     socket.on('task_blocked', ({ reason }) => {
       blockedMsg = reason;
       taskProgress = { taskId: null, progress: 0 };
+      sfx.blocked();
       if (blockedTimer) clearTimeout(blockedTimer);
       blockedTimer = setTimeout(() => { blockedMsg = null; }, 2500);
     });
@@ -273,12 +281,14 @@
           if (killCDMs <= 0) { clearInterval(killCDInterval); killCDInterval = null; }
         }, 100);
       }
-      if (victimId === myId) myRole = 'ghost';
+      if (victimId === myId) { myRole = 'ghost'; sfx.death(); }
+      else sfx.kill();
     });
 
     socket.on('nuke_result', ({ success }) => {
       const imgKey = success ? (currentMap === 'russia' ? 'russiaNuke' : 'usaNuke') : 'launchFail';
       nukeMsg = { imgKey, ok: success };
+      success ? sfx.nukeSuccess() : sfx.nukeFail();
       if (nukeMsgTimer) clearTimeout(nukeMsgTimer);
       nukeMsgTimer = setTimeout(() => { nukeMsg = null; }, 5000);
     });
@@ -286,6 +296,9 @@
     socket.on('game_over', ({ winner, reason }) => {
       gameOverMsg = { winner, reason };
       stopSiren();
+      const iWon = (myRole === 'alien' && winner === 'aliens') ||
+                   (myRole === 'resident' && winner === 'residents');
+      iWon ? sfx.victory() : sfx.defeat();
     });
 
     socket.on('chat_message', (msg) => {
@@ -299,6 +312,7 @@
   // ════════════════════════════════════════════════════════════════════════
   function onKeyDown(e) {
     if (chatFocused) return;
+    unlockAudio();  // browsers require a user gesture before audio can play
     keys[e.key.toLowerCase()] = true;
 
     if (e.key === 'e' || e.key === 'E') handleInteract();
@@ -325,10 +339,10 @@
   function sendInput() {
     if (phase !== 'playing') return;
     const input = {
-      up:    !!(keys['w'] || keys['arrowup']),
-      down:  !!(keys['s'] || keys['arrowdown']),
-      left:  !!(keys['a'] || keys['arrowleft']),
-      right: !!(keys['d'] || keys['arrowright']),
+      up:    !!(keys['w'] || keys['arrowup'])    || touchMove.up,
+      down:  !!(keys['s'] || keys['arrowdown'])  || touchMove.down,
+      left:  !!(keys['a'] || keys['arrowleft'])  || touchMove.left,
+      right: !!(keys['d'] || keys['arrowright']) || touchMove.right,
     };
     if (input.up !== prevSent.up || input.down !== prevSent.down ||
         input.left !== prevSent.left || input.right !== prevSent.right) {
@@ -347,13 +361,13 @@
     if (myRole === 'resident') {
       for (const sz of sabotageZones) {
         if (fires[sz.id]?.active && dist(me, sz) < TASK_R) {
-          socket.emit('extinguish', { zoneId: sz.id }); return;
+          socket.emit('extinguish', { zoneId: sz.id }); sfx.extinguish(); return;
         }
       }
       if (myTasks) {
         for (const tz of taskZones) {
           if (myTasks.assigned.includes(tz.id) && !myTasks.completed.includes(tz.id) && dist(me, tz) < TASK_R) {
-            socket.emit('task_start', { taskId: tz.id }); return;
+            socket.emit('task_start', { taskId: tz.id }); sfx.taskStart(); return;
           }
         }
       }
@@ -365,7 +379,7 @@
     if (myRole === 'alien') {
       for (const sz of sabotageZones) {
         if (!fires[sz.id]?.active && dist(me, sz) < TASK_R) {
-          socket.emit('sabotage', { zoneId: sz.id }); return;
+          socket.emit('sabotage', { zoneId: sz.id }); sfx.sabotage(); return;
         }
       }
     }
@@ -794,9 +808,9 @@
     if (bgImg) { ctx.save(); ctx.globalAlpha = 0.12; ctx.drawImage(bgImg, 0, 0, W, H); ctx.restore(); }
     ctx.fillStyle = 'rgba(8,8,18,0.84)'; ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = '#ffe066'; ctx.font = 'bold 34px monospace'; ctx.textAlign = 'center';
-    ctx.fillText('HORIZONS', W / 2, 82);
+    ctx.fillText('SUSSY WUSSY', W / 2, 82);
     ctx.fillStyle = '#888'; ctx.font = '13px monospace';
-    ctx.fillText('Residents vs. Aliens — Nuclear Launch Protocol', W / 2, 108);
+    ctx.fillText('Residents v Aliens (very fun)', W / 2, 108);
 
     const cnt = Math.min(serverPlayers.size, 10);
     const px = W / 2 - 130, py = 136;
@@ -866,9 +880,21 @@
   // ════════════════════════════════════════════════════════════════════════
   // Join / chat helpers
   // ════════════════════════════════════════════════════════════════════════
+  // crypto.randomUUID() only exists in a secure context (HTTPS/localhost);
+  // over a LAN IP on plain HTTP it's undefined, so provide a fallback.
+  function uuid() {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = (Math.random() * 16) | 0;
+      return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+    });
+  }
+
   function joinGame() {
+    unlockAudio();  // first user gesture — enables Web Audio for the session
+    sfx.click();
     const n = nameInput.trim().slice(0, 16) || 'Player';
-    const id = localStorage.getItem('horizons_player_id') || crypto.randomUUID();
+    const id = localStorage.getItem('horizons_player_id') || uuid();
     localStorage.setItem('horizons_player_name', n);
     localStorage.setItem('horizons_player_id',   id);
     nameEntered = true;
@@ -876,6 +902,18 @@
   }
 
   function onNameKey(e) { if (e.key === 'Enter') joinGame(); }
+
+  // ── Touch control handlers ─────────────────────────────────────────────
+  function pressDir(e, dir, on) {
+    e.preventDefault();
+    if (on) unlockAudio();
+    touchMove = { ...touchMove, [dir]: on };
+  }
+  function touchInteract(e) { e.preventDefault(); unlockAudio(); handleInteract(); }
+  function touchKill(e) {
+    e.preventDefault(); unlockAudio();
+    if (phase === 'playing' && myRole === 'alien') { socket.emit('attempt_kill'); }
+  }
 
   function sendChat() {
     const msg = chatInput.trim(); if (!msg) return;
@@ -895,6 +933,8 @@
 
     await loadAllImages();
 
+    isTouch = (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || 'ontouchstart' in window;
+
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup',   onKeyUp);
     wireSocket();
@@ -903,7 +943,7 @@
     if (storedName) {
       nameInput   = storedName;
       nameEntered = true;
-      const storedId = localStorage.getItem('horizons_player_id') || crypto.randomUUID();
+      const storedId = localStorage.getItem('horizons_player_id') || uuid();
       localStorage.setItem('horizons_player_id', storedId);
       socket.emit('join', { playerId: storedId, name: storedName });
     }
@@ -930,7 +970,7 @@
 
 {#if !nameEntered}
 <div class="name-modal">
-  <h2>HORIZONS</h2>
+  <h2>SUSSY WUSSY</h2>
   <p>Enter your name to join</p>
   <input bind:value={nameInput} placeholder="Player" maxlength="16" on:keydown={onNameKey} />
   <button on:click={joinGame}>Join Game</button>
@@ -942,7 +982,7 @@
 {#if nameEntered}
 <div class="dom-hud">
   {#if phase === 'lobby' && serverPlayers.size >= 2}
-    <button class="btn-start" on:click={() => socket.emit('start_game')}>▶ Start Game</button>
+    <button class="btn-start" on:click={() => { unlockAudio(); sfx.click(); socket.emit('start_game'); }}>▶ Start Game</button>
   {:else if phase === 'lobby'}
     <div class="waiting">Waiting for more players…</div>
   {/if}
@@ -970,6 +1010,44 @@
     <button class="chat-send" on:click={sendChat}>➤</button>
   </div>
 </div>
+
+<!-- On-screen touch controls (mobile only) -->
+{#if isTouch && phase === 'playing' && myRole !== 'ghost'}
+<div class="touch-controls">
+  <div class="dpad">
+    <button class="dbtn up" class:active={touchMove.up}
+      on:pointerdown={(e) => pressDir(e, 'up', true)}
+      on:pointerup={(e) => pressDir(e, 'up', false)}
+      on:pointerleave={(e) => pressDir(e, 'up', false)}
+      on:pointercancel={(e) => pressDir(e, 'up', false)}
+      on:contextmenu|preventDefault>▲</button>
+    <button class="dbtn left" class:active={touchMove.left}
+      on:pointerdown={(e) => pressDir(e, 'left', true)}
+      on:pointerup={(e) => pressDir(e, 'left', false)}
+      on:pointerleave={(e) => pressDir(e, 'left', false)}
+      on:pointercancel={(e) => pressDir(e, 'left', false)}
+      on:contextmenu|preventDefault>◀</button>
+    <button class="dbtn right" class:active={touchMove.right}
+      on:pointerdown={(e) => pressDir(e, 'right', true)}
+      on:pointerup={(e) => pressDir(e, 'right', false)}
+      on:pointerleave={(e) => pressDir(e, 'right', false)}
+      on:pointercancel={(e) => pressDir(e, 'right', false)}
+      on:contextmenu|preventDefault>▶</button>
+    <button class="dbtn down" class:active={touchMove.down}
+      on:pointerdown={(e) => pressDir(e, 'down', true)}
+      on:pointerup={(e) => pressDir(e, 'down', false)}
+      on:pointerleave={(e) => pressDir(e, 'down', false)}
+      on:pointercancel={(e) => pressDir(e, 'down', false)}
+      on:contextmenu|preventDefault>▼</button>
+  </div>
+  <div class="action-btns">
+    {#if myRole === 'alien'}
+      <button class="abtn kill" on:pointerdown={touchKill} on:contextmenu|preventDefault>K</button>
+    {/if}
+    <button class="abtn act" on:pointerdown={touchInteract} on:contextmenu|preventDefault>E</button>
+  </div>
+</div>
+{/if}
 {/if}
 
 <style>
@@ -1045,4 +1123,45 @@
     cursor: pointer; padding: 0 10px; font-size: 12px;
   }
   .chat-send:hover { background: rgba(255,255,255,0.22); }
+
+  /* ── Touch controls ── */
+  .touch-controls {
+    position: fixed; inset: 0; z-index: 30;
+    pointer-events: none;  /* only the buttons capture touches */
+  }
+  .dpad {
+    position: absolute; left: 18px; bottom: 24px;
+    width: 168px; height: 168px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .dbtn {
+    pointer-events: auto;
+    background: rgba(20,20,35,0.55);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: #fff; font-size: 22px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    user-select: none; -webkit-user-select: none; touch-action: none;
+  }
+  .dbtn.active { background: rgba(255,224,102,0.55); border-color: #ffe066; }
+  .dbtn.up    { grid-column: 2; grid-row: 1; }
+  .dbtn.left  { grid-column: 1; grid-row: 2; }
+  .dbtn.right { grid-column: 3; grid-row: 2; }
+  .dbtn.down  { grid-column: 2; grid-row: 3; }
+
+  .action-btns {
+    position: absolute; right: 22px; bottom: 30px;
+    display: flex; flex-direction: column-reverse; gap: 16px;
+  }
+  .abtn {
+    pointer-events: auto;
+    width: 76px; height: 76px; border-radius: 50%;
+    font-family: monospace; font-weight: bold; font-size: 26px; color: #fff;
+    border: 2px solid rgba(255,255,255,0.3);
+    user-select: none; -webkit-user-select: none; touch-action: none;
+  }
+  .abtn.act  { background: rgba(80,200,120,0.55); border-color: #50c878; }
+  .abtn.kill { background: rgba(200,30,30,0.6);  border-color: #ff4444; }
 </style>

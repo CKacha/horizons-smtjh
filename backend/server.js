@@ -3,7 +3,6 @@ const http    = require('http');
 const { Server } = require('socket.io');
 const cors   = require('cors');
 const path   = require('path');
-const sharp  = require('sharp');
 const { findOrCreate, recordGamePlayed, recordKill, getLeaderboard } = require('./db');
 
 const app    = express();
@@ -70,51 +69,14 @@ const MAP_CONFIGS = {
   },
 };
 
-// ── Collision grids ────────────────────────────────────────────────────────────
-const COLL_SIZE = 1500;
-let collRussia = null;
-let collUSA    = null;
-
-async function buildCollisionGrid(filename) {
-  const filePath = path.join(__dirname, '..', 'frontend', 'static', filename);
-  const { data } = await sharp(filePath, { limitInputPixels: false })
-    .resize(COLL_SIZE, COLL_SIZE, { fit: 'fill' })
-    .flatten({ background: '#ffffff' })
-    .removeAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-
-  const grid = new Uint8Array(COLL_SIZE * COLL_SIZE);
-  for (let i = 0; i < COLL_SIZE * COLL_SIZE; i++) {
-    const r = data[i * 3], g = data[i * 3 + 1], b = data[i * 3 + 2];
-    grid[i] = (r + g + b) / 3 < 80 ? 0 : 1;  // 0 = wall, 1 = walkable
-  }
-  return grid;
-}
-
-function pixelWalkable(wx, wy) {
-  const grid = currentMap === 'russia' ? collRussia : collUSA;
-  if (!grid) return true;
-  const cx = Math.min(Math.floor(wx), COLL_SIZE - 1);
-  const cy = Math.min(Math.floor(wy), COLL_SIZE - 1);
-  return grid[cy * COLL_SIZE + cx] === 1;
-}
-
-function isWalkable(wx, wy) {
-  if (wx < 0 || wy < 0 || wx >= WORLD_W || wy >= WORLD_H) return false;
-  if (!currentMap) return true;
-  return pixelWalkable(wx, wy);  // pixelWalkable handles null grid internally
-}
-
+// ── Movement bounds ──────────────────────────────────────────────────────────
+// No pixel-collision walls — the map is open. Players are only kept inside the world.
 const PLAYER_R = 14;
-function canMoveX(p, dx) {
-  const edge = p.x + dx + (dx > 0 ? PLAYER_R : -PLAYER_R);
-  return isWalkable(edge, p.y - PLAYER_R) && isWalkable(edge, p.y + PLAYER_R);
+function isWalkable(wx, wy) {
+  return wx >= PLAYER_R && wy >= PLAYER_R && wx <= WORLD_W - PLAYER_R && wy <= WORLD_H - PLAYER_R;
 }
-function canMoveY(p, dy) {
-  const edge = p.y + dy + (dy > 0 ? PLAYER_R : -PLAYER_R);
-  return isWalkable(p.x - PLAYER_R, edge) && isWalkable(p.x + PLAYER_R, edge);
-}
+function canMoveX(p, dx) { return isWalkable(p.x + dx, p.y); }
+function canMoveY(p, dy) { return isWalkable(p.x, p.y + dy); }
 
 // ── Runtime state ─────────────────────────────────────────────────────────────
 const players     = new Map();  // socketId → player
@@ -443,13 +405,3 @@ setInterval(() => {
 // ── Startup ───────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => console.log(`server on http://0.0.0.0:${PORT}`));
-
-Promise.all([
-  buildCollisionGrid('map_russia.png'),
-  buildCollisionGrid('map_usa.png'),
-]).then(([r, u]) => {
-  collRussia = r; collUSA = u;
-  console.log('collision maps ready');
-}).catch(err => {
-  console.error('collision map load failed — movement unrestricted:', err.message);
-});
